@@ -3,13 +3,25 @@
 
 #include "../../include/lib/table.h"
 
-HashTable* ht_create (size_t init_size) {
+unsigned long int ht_default_hash (void* key) {
+    uint8_t* bytes = (uint8_t*)key;
+    size_t hash = 0;
+
+    for (size_t i = 0; i < sizeof(key); i++) {
+        hash = 31 * hash + bytes[i]; 
+    }
+
+    return hash;
+}
+
+HashTable* ht_create (size_t init_size, unsigned long int (*hash) (void* key), int (*key_cmp) (void* a, void* b)) {
     HashTable* table = (HashTable*) malloc(sizeof(HashTable));
 
     table->current_capacity = 0;
     table->max_capacity = init_size;
-
     table->entries = (Entry**) calloc(table->max_capacity, sizeof(Entry*));
+    table->key_cmp = key_cmp;
+    table->hash = hash;
 
     for (size_t i = 0; i < table->max_capacity; i++) {
         table->entries[i] = NULL;
@@ -31,29 +43,12 @@ Entry* ht_create_entry (void* key, void* value) {
     return entry;
 }
 
-size_t ht_hash (void* key) {
-    uint8_t* bytes = (uint8_t*)key;
-    size_t hash = 0;
-
-    for (size_t i = 0; i < sizeof(key); i++) {
-        // TODO: better hashing function
-        hash = 31 * hash + bytes[i]; 
-    }
-
-    return hash;
-}
-
-int ht_key_cmp (void* a, void* b) {
-    // TODO: Update key comparison for all possible key types
-    return (int*) a == (int*) b;
-}
-
 void ht_handle_collision (HashTable* ht, Entry* entry) {
-    size_t index = ht_hash(entry->key);
+    size_t index = ht->hash(entry->key);
     Entry* current = ht->entries[index];
 
     while (current->next != NULL) {
-        if (ht_key_cmp(current->key, entry->key)) {
+        if (ht->key_cmp(current->key, entry->key)) {
             current->value = entry->value;
             ht_destroy_entry(entry);
             return;
@@ -68,7 +63,7 @@ void ht_handle_collision (HashTable* ht, Entry* entry) {
 void ht_insert (HashTable* ht, void* key, void* value) {
     Entry* entry = ht_create_entry(key, value);
 
-    size_t index = ht_hash(key);
+    size_t index = ht->hash(key);
     Entry* curr_entry = ht->entries[index];
 
     if (curr_entry == NULL) {
@@ -87,11 +82,11 @@ void ht_insert (HashTable* ht, void* key, void* value) {
 }
 
 void* ht_get(HashTable* ht, void* key) {
-    size_t index = ht_hash(key);
+    size_t index = ht->hash(key);
     Entry* entry = ht->entries[index];
 
     while (entry != NULL) {
-        if (ht_key_cmp(entry->key, key)) {
+        if (ht->key_cmp(entry->key, key)) {
             return entry->value;
         }
         entry = entry->next;
@@ -101,12 +96,12 @@ void* ht_get(HashTable* ht, void* key) {
 }
 
 void* ht_delete (HashTable* ht, void* key) {
-    size_t index = ht_hash(key);
+    size_t index = ht->hash(key);
     Entry* current = ht->entries[index];
     Entry* prev = NULL;
 
     while (current != NULL) {
-        if (ht_key_cmp(current->key, key)) {
+        if (ht->key_cmp(current->key, key)) {
             void* return_value = current->value;
             if (prev == NULL) {
                 ht->entries[index] = current->next;
